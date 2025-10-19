@@ -1,0 +1,6 @@
+APP_TITLE = "Dart Duel"
+WINDOW_WIDTH = 750
+WINDOW_HEIGHT = 650
+
+HOST = "localhost"
+PORT = 5000
