@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
 )
-from qasync import asyncSlot
 
 from utils.client_helper import ClientHelper
 from utils.tcp_client import TCPClient
@@ -47,7 +46,7 @@ class LoginView(QWidget):
 
             self.close()
 
-            self.match_making_view = MatchMakingView(self._tcp_client)
+            self.match_making_view = MatchMakingView(self._tcp_client, username)
             self.match_making_view.show()
 
         except ValueError as e:

@@ -1,3 +1,4 @@
+from typing import Literal
 from .tcp_client import TCPClient
 
 
@@ -11,6 +12,7 @@ def _raise_if_not_ok(response: dict):
         message = "Unknown error."
 
     raise ValueError(message)
+
 
 class ClientHelper:
     def __init__(self, client: TCPClient) -> None:
@@ -58,3 +60,19 @@ class ClientHelper:
         _raise_if_not_ok(response)
 
         return response["body"]
+
+    async def replies_challenge(
+        self,
+        id: int,
+        status: Literal["accepted", "declined"],
+    ):
+        request = {
+            "command": "answerChallenge",
+            "body": {
+                "challengeId": id,
+                "newStatus": status,
+            },
+        }
+
+        response = await self._client.send_object(request)
+        _raise_if_not_ok(response)

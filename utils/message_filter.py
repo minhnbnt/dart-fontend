@@ -9,8 +9,10 @@ def is_from_request_with_id(response: dict, id: UUID):
 def is_new_player_online_event(response: dict) -> bool:
     return response.get("event") == "newUserOnline"
 
+
 def is_player_go_offline_event(response: dict) -> bool:
     return response.get("event") == "userOffline"
 
+
 def is_new_challenger_event(response: dict) -> bool:
-    return response.get("event") == "userOffline"
+    return response.get("event") == "newChallenger"
