@@ -1,4 +1,5 @@
 from typing import Literal
+
 from .tcp_client import TCPClient
 
 
@@ -61,18 +62,45 @@ class ClientHelper:
 
         return response["body"]
 
-    async def replies_challenge(
+    async def answer_challenge(
         self,
-        id: int,
-        status: Literal["accepted", "declined"],
+        challenge_id: int,
+        new_status: Literal["accepted", "declined"],
     ):
         request = {
             "command": "answerChallenge",
             "body": {
-                "challengeId": id,
-                "newStatus": status,
+                "challengeId": challenge_id,
+                "newStatus": new_status,
             },
         }
 
         response = await self._client.send_object(request)
         _raise_if_not_ok(response)
+
+    async def throw_dart(self, match_id: int, score: int):
+        request = {
+            "command": "throw",
+            "body": {
+                "matchId": match_id,
+                "score": score,
+            },
+        }
+
+        response = await self._client.send_object(request)
+        _raise_if_not_ok(response)
+
+        return response.get("body")
+
+    async def forfeit_match(self, match_id: int):
+        request = {
+            "command": "forfeit",
+            "body": {
+                "matchId": match_id,
+            },
+        }
+
+        response = await self._client.send_object(request)
+        _raise_if_not_ok(response)
+
+        return response.get("body")

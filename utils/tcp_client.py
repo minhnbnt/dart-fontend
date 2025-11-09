@@ -1,7 +1,7 @@
 import asyncio
 import json
 import socket
-from threading import Thread, Lock
+from threading import Lock, Thread
 from typing import Callable
 from uuid import UUID, uuid4
 
@@ -93,6 +93,9 @@ class TCPClient:
         obj["id"] = str(id)
 
         def callback(response: dict):
+            if "id" not in response:
+                return
+
             if UUID(response["id"]) != id:
                 return
 
@@ -103,4 +106,3 @@ class TCPClient:
 
         await self.write_object(obj)
         return await future
-

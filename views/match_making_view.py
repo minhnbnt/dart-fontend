@@ -3,16 +3,15 @@ from typing import Any
 
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (
-    QMessageBox,
-    QWidget,
-    QVBoxLayout,
     QHBoxLayout,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 from qasync import asyncSlot
-
 from utils.client_event_helper import ClientEventHelper
 from utils.client_helper import ClientHelper
 from utils.sync_await import sync_await
@@ -136,7 +135,7 @@ class MatchMakingView(QWidget):
         if reply == QMessageBox.Yes:
             new_status = "accepted"
 
-        sync_await(self._client_helper.replies_challenge(challenge_id, new_status))
+        sync_await(self._client_helper.answer_challenge(challenge_id, new_status))
 
     def cleanup(self):
         self._table.cleanup()

@@ -14,11 +14,7 @@ from PyQt5.QtWidgets import (
 from utils.client_helper import ClientHelper
 from utils.sync_await import sync_await
 from utils.tcp_client import TCPClient
-from utils.validators import (
-    translate_error_message,
-    validate_password,
-    validate_username,
-)
+from utils.validators import translate_error_message
 
 from views.match_making_view import MatchMakingView
 
@@ -43,23 +39,6 @@ class LoginView(QWidget):
     def handle_login(self):
         username = self.input_username.text().strip()
         password = self.input_password.text()
-
-        # Validation using validators utility
-        is_valid, error_msg = validate_username(username)
-        if not is_valid:
-            QMessageBox.warning(self, "Lỗi", error_msg)
-            self.input_username.setFocus()
-            return
-
-        is_valid, error_msg = validate_password(password)
-        if not is_valid:
-            QMessageBox.warning(self, "Lỗi", error_msg)
-            self.input_password.setFocus()
-            return
-
-        # Disable button during login
-        self.button_login.setEnabled(False)
-        self.button_login.setText("Đang đăng nhập...")
 
         try:
             sync_await(self._client_helper.login(username, password))

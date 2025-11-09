@@ -16,3 +16,23 @@ def is_player_go_offline_event(response: dict) -> bool:
 
 def is_new_challenger_event(response: dict) -> bool:
     return response.get("event") == "newChallenger"
+
+
+def is_challenge_canceled_event(response: dict) -> bool:
+    return response.get("event") == "challengeCanceled"
+
+
+def is_challenge_rejected_event(response: dict) -> bool:
+    return response.get("event") == "challengeRejected"
+
+
+def is_start_game_event(response: dict) -> bool:
+    return response.get("event") == "startGame"
+
+
+def is_other_threw_event(response: dict) -> bool:
+    return response.get("event") == "otherThrew"
+
+
+def is_player_forfeited_event(response: dict) -> bool:
+    return response.get("event") == "playerForfeited"
