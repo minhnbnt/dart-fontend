@@ -3,19 +3,24 @@ from typing import override
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QCursor
 from PyQt5.QtWidgets import (
-    QWidget,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
-    QHBoxLayout,
-    QMessageBox,
+    QWidget,
+)
+from utils.client_helper import ClientHelper
+from utils.sync_await import sync_await
+from utils.tcp_client import TCPClient
+from utils.validators import (
+    translate_error_message,
+    validate_password,
+    validate_username,
 )
 
-from utils.client_helper import ClientHelper
-from utils.tcp_client import TCPClient
 from views.match_making_view import MatchMakingView
-from utils.sync_await import sync_await
 
 
 class LoginView(QWidget):
@@ -36,13 +41,30 @@ class LoginView(QWidget):
         self.match_making_view = None
 
     def handle_login(self):
-        username = self.input_username.text()
+        username = self.input_username.text().strip()
         password = self.input_password.text()
+
+        # Validation using validators utility
+        is_valid, error_msg = validate_username(username)
+        if not is_valid:
+            QMessageBox.warning(self, "Lỗi", error_msg)
+            self.input_username.setFocus()
+            return
+
+        is_valid, error_msg = validate_password(password)
+        if not is_valid:
+            QMessageBox.warning(self, "Lỗi", error_msg)
+            self.input_password.setFocus()
+            return
+
+        # Disable button during login
+        self.button_login.setEnabled(False)
+        self.button_login.setText("Đang đăng nhập...")
 
         try:
             sync_await(self._client_helper.login(username, password))
 
-            QMessageBox.information(self, "Success", "Login successful!")
+            QMessageBox.information(self, "Thành công", "Đăng nhập thành công!")
 
             self.close()
 
@@ -50,8 +72,16 @@ class LoginView(QWidget):
             self.match_making_view.show()
 
         except ValueError as e:
-            QMessageBox.warning(self, "Failed", str(e))
-            return
+            error_message = translate_error_message(str(e))
+            QMessageBox.warning(self, "Đăng nhập thất bại", error_message)
+            self.input_password.clear()
+            self.input_password.setFocus()
+        except Exception as e:
+            QMessageBox.critical(self, "Lỗi", f"Lỗi kết nối: {str(e)}")
+        finally:
+            # Re-enable button
+            self.button_login.setEnabled(True)
+            self.button_login.setText("Đăng nhập")
 
     @override
     def resizeEvent(self, a0):
