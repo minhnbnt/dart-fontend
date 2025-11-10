@@ -78,13 +78,30 @@ class ClientHelper:
         response = await self._client.send_object(request)
         _raise_if_not_ok(response)
 
-    async def throw_dart(self, match_id: int, score: int):
+    async def throw_dart(
+        self,
+        match_id: int,
+        score: int,
+        dx: float = None,
+        dy: float = None,
+        rotation_angle: float = None,
+    ):
+        body = {
+            "matchId": match_id,
+            "score": score,
+        }
+
+        # Thêm tọa độ nếu có
+        if dx is not None:
+            body["dx"] = dx
+        if dy is not None:
+            body["dy"] = dy
+        if rotation_angle is not None:
+            body["rotationAngle"] = rotation_angle
+
         request = {
             "command": "throw",
-            "body": {
-                "matchId": match_id,
-                "score": score,
-            },
+            "body": body,
         }
 
         response = await self._client.send_object(request)
@@ -97,6 +114,30 @@ class ClientHelper:
             "command": "forfeit",
             "body": {
                 "matchId": match_id,
+            },
+        }
+
+        response = await self._client.send_object(request)
+        _raise_if_not_ok(response)
+
+        return response.get("body")
+
+    async def spin_dartboard(
+        self, match_id: int, rotation_amount: float, duration: float
+    ):
+        """
+        Gửi lệnh xoay dartboard đến đối thủ
+        Args:
+            match_id: ID của trận đấu
+            rotation_amount: Số độ xoay (vd: 720 = 2 vòng)
+            duration: Thời gian xoay tính bằng ms (vd: 3000 = 3 giây)
+        """
+        request = {
+            "command": "spin",
+            "body": {
+                "matchId": match_id,
+                "rotationAmount": rotation_amount,
+                "duration": duration,
             },
         }
 

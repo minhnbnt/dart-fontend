@@ -5,6 +5,7 @@ from threading import Thread
 
 def sync_await[T](future: Awaitable[T]) -> T:
     result = None
+    exception = None
 
     def set_result():
         loop = asyncio.new_event_loop()
@@ -12,8 +13,11 @@ def sync_await[T](future: Awaitable[T]) -> T:
         try:
             asyncio.set_event_loop(loop)
 
-            nonlocal result
+            nonlocal result, exception
             result = loop.run_until_complete(future)
+
+        except Exception as e:
+            exception = e
 
         finally:
             loop.close()
@@ -22,5 +26,8 @@ def sync_await[T](future: Awaitable[T]) -> T:
 
     thread.start()
     thread.join()
+
+    if exception is not None:
+        raise exception
 
     return result

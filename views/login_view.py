@@ -50,13 +50,12 @@ class LoginView(QWidget):
             self.match_making_view = MatchMakingView(self._tcp_client, username)
             self.match_making_view.show()
 
-        except ValueError as e:
+        except Exception as e:
             error_message = translate_error_message(str(e))
             QMessageBox.warning(self, "Đăng nhập thất bại", error_message)
             self.input_password.clear()
             self.input_password.setFocus()
-        except Exception as e:
-            QMessageBox.critical(self, "Lỗi", f"Lỗi kết nối: {str(e)}")
+
         finally:
             # Re-enable button
             self.button_login.setEnabled(True)

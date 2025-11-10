@@ -11,6 +11,13 @@ from .message_filter import (
     is_player_go_offline_event,
     is_start_game_event,
 )
+
+
+def is_opponent_spin_event(message: dict) -> bool:
+    """Check if message is an opponentSpin event"""
+    return message.get("event") == "opponentSpin"
+
+
 from .tcp_client import TCPClient
 
 type EventCallback = Callable[[dict], None]
@@ -96,6 +103,16 @@ class ClientEventHelper:
     def on_player_forfeited(self, callback: EventCallback):
         def client_callback(message: dict):
             if not is_player_forfeited_event(message):
+                return
+
+            body = message["body"]
+            callback(body)
+
+        return self._client.add_callback(client_callback)
+
+    def on_opponent_spin(self, callback: EventCallback):
+        def client_callback(message: dict):
+            if not is_opponent_spin_event(message):
                 return
 
             body = message["body"]
