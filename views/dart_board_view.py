@@ -1,19 +1,16 @@
 import math
 import random
-import sys
-import weakref
 
 from PyQt5.QtCore import (
     QEasingCurve,
     QPointF,
     QPropertyAnimation,
-    QRectF,
     Qt,
     QTimer,
     pyqtProperty,
     pyqtSignal,
 )
-from PyQt5.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PyQt5.QtGui import QPainter
 from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -25,8 +22,10 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
 from utils.client_event_helper import ClientEventHelper
 from utils.client_helper import ClientHelper
+from utils.dart_board_painter import DartBoardPainter
 from utils.dart_score_calculator import DartScoreCalculator
 from utils.sync_await import sync_await
 
@@ -56,6 +55,9 @@ class DartBoardWidget(QWidget):
 
         # Khởi tạo score calculator với segments mặc định
         self.score_calculator = DartScoreCalculator()
+
+        # Khởi tạo dart painter để vẽ dartboard
+        self.dart_painter = DartBoardPainter(self.score_calculator)
 
         # Vị trí chấm đỏ (tọa độ theo hệ tọa độ *chưa xoay* của bảng, tính từ tâm)
         # None nghĩa là chưa có chấm hiển thị
@@ -151,273 +153,46 @@ class DartBoardWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        painter.save()  # Save state trước khi transform
-
         rect = self.rect()
         side = min(rect.width(), rect.height())
         center_x, center_y = rect.width() / 2, rect.height() / 2
         radius = side / 2 - 20
 
-        # Dịch gốc tọa độ đến tâm và xoay bảng
-        # Normalize góc khi vẽ
-        painter.translate(center_x, center_y)
-        painter.rotate(self._rotation_angle % 360)
+        # Vẽ dartboard chính
+        self.dart_painter.draw_dartboard(
+            painter, center_x, center_y, radius, self._rotation_angle
+        )
 
-        # Vẽ các vùng với góc độ khác nhau
-        current_angle = 0
-        for score, angle_width, color in self.score_calculator.get_segments():
-            start_angle = current_angle * 16  # PyQt sử dụng 1/16 độ
-            span_angle = angle_width * 16
-
-            painter.setBrush(QBrush(color))
-            painter.setPen(QPen(Qt.black, 2))
-            painter.drawPie(
-                int(-radius),
-                int(-radius),
-                int(radius * 2),
-                int(radius * 2),
-                int(start_angle),
-                int(span_angle),
+        # Vẽ cursor của đối thủ (nếu có)
+        if self.opponent_cursor is not None:
+            self.dart_painter.draw_opponent_cursor(
+                painter, self.opponent_cursor, center_x, center_y, self._rotation_angle
             )
 
-            current_angle += angle_width
-
-        # Vẽ tâm bullseye
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(QColor("#FFD700")))  # Vàng gold
-        # Scale bullseye radius theo tỷ lệ dartboard hiện tại
-        bullseye_radius = radius * (
-            self.score_calculator.BULLSEYE_RADIUS
-            / self.score_calculator.STANDARD_RADIUS
-        )
-        # Dùng QPointF và radius để vẽ hình tròn hoàn hảo
-        painter.drawEllipse(QPointF(0, 0), bullseye_radius, bullseye_radius)
-
-        # Vẽ số "100" ở giữa bullseye
-        painter.setFont(QFont("Arial", 10, QFont.Bold))
-        text_rect = QRectF(
-            -bullseye_radius, -bullseye_radius, bullseye_radius * 2, bullseye_radius * 2
-        )
-        painter.setPen(QPen(Qt.black, 2))
-        painter.drawText(text_rect, Qt.AlignCenter, "100")
-
-        # Vẽ viền ngoài bảng
-        painter.setPen(QPen(QColor("#333333"), 4))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(
-            int(-radius), int(-radius), int(radius * 2), int(radius * 2)
-        )
-
-        # --- VẼ cursor của đối thủ (vẽ trước chấm đỏ) ---
-        if self.opponent_cursor is not None:
-            # Vẽ crosshair cursor của đối thủ
-            painter.setPen(QPen(QColor("#FF6B35"), 3))  # Màu cam nổi bật
-            cursor_size = 15
-            x, y = self.opponent_cursor.x(), self.opponent_cursor.y()
-
-            # Vẽ dấu +
-            painter.drawLine(
-                int(x - cursor_size), int(y), int(x + cursor_size), int(y)
-            )  # Ngang
-            painter.drawLine(
-                int(x), int(y - cursor_size), int(x), int(y + cursor_size)
-            )  # Dọc
-
-            # Vẽ vòng tròn nhỏ ở giữa
-            painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(QColor("#FF6B35"), 2))
-            painter.drawEllipse(int(x - 3), int(y - 3), 6, 6)
-
-        # --- VẼ chấm đỏ nếu có (vẽ sau cùng để nằm trên các vùng) ---
+        # Vẽ chấm đỏ hit point (nếu có)
         if self.hit_point is not None:
-            # hit_point lưu là QPointF(x, y) tính từ tâm *trước khi xoay bảng* (đã biến đổi inverse khi click)
-            # Vẽ viền trắng để nổi bật
-            painter.setBrush(QBrush(Qt.white))
-            painter.setPen(QPen(Qt.black, 2))
-            r = 8  # bán kính chấm lớn hơn
-            painter.drawEllipse(self.hit_point, r, r)
+            self.dart_painter.draw_hit_point(
+                painter, self.hit_point, center_x, center_y, self._rotation_angle
+            )
 
-            # Vẽ chấm đỏ bên trong
-            painter.setBrush(QBrush(Qt.red))
-            painter.setPen(Qt.NoPen)
-            r_inner = 5
-            painter.drawEllipse(self.hit_point, r_inner, r_inner)
+        # Vẽ chữ số quanh vòng tròn
+        self.dart_painter.draw_segment_labels(
+            painter, center_x, center_y, radius, self._rotation_angle
+        )
 
-        painter.restore()  # Reset transform
-
-        # Vẽ chữ số quanh vòng tròn (SAU KHI restore để không bị ảnh hưởng rotation)
-        painter.save()
-        painter.translate(center_x, center_y)
-
-        font = QFont("Arial", 14, QFont.Bold)
-        painter.setFont(font)
-
-        current_angle = 0
-        for score, angle_width, color in self.score_calculator.get_segments():
-            # Tính vị trí giữa segment để đặt số
-            # Cộng thêm rotation_angle để số khớp với segment đã xoay
-            mid_angle = current_angle + angle_width / 2 + (self._rotation_angle % 360)
-            angle_rad = math.radians(mid_angle)
-            text_radius = radius - 30
-            x = text_radius * math.cos(angle_rad)
-            y = text_radius * math.sin(angle_rad)
-
-            text = str(score)
-
-            painter.save()
-            painter.translate(x, y)
-            # Xoay text để dễ đọc - vuông góc với hướng tâm ra ngoài
-            painter.rotate(mid_angle + 90)
-
-            # Sử dụng QRectF để căn giữa text tự động
-            rect_size = 40  # Kích thước rect chứa text
-            text_rect = QRectF(-rect_size / 2, -rect_size / 2, rect_size, rect_size)
-
-            # Vẽ chữ với viền đen để dễ đọc
-            painter.setPen(QPen(Qt.black, 3))
-            painter.drawText(text_rect, Qt.AlignCenter, text)
-            painter.setPen(QPen(Qt.white, 1))
-            painter.drawText(text_rect, Qt.AlignCenter, text)
-            painter.restore()
-
-            current_angle += angle_width
-
-        painter.restore()
-
-        # Hiển thị thông tin về bảng quay
-        self.draw_rotation_info(painter)
-
-    def draw_rotation_info(self, painter):
-        """Hiển thị thông tin về trạng thái quay"""
-        # Draw info fixed to widget coordinates (not rotated with the board)
-        painter.save()
-        # Reset any transforms (the paintEvent applied translate+rotate earlier)
-        painter.resetTransform()
-
-        # Vẽ khung thông tin ở góc trên phải (widget coords)
-        info_x = self.width() - 180
-        info_y = 20
-        info_width = 160
-        info_height = 60
-
-        # Vẽ nền với shadow
-        painter.setBrush(QBrush(QColor(0, 0, 0, 80)))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(info_x + 2, info_y + 2, info_width, info_height, 8, 8)
-
-        # Vẽ nền chính
-        painter.setBrush(QBrush(QColor(255, 255, 255, 240)))
-        painter.setPen(QPen(Qt.black, 2))
-        painter.drawRoundedRect(info_x, info_y, info_width, info_height, 8, 8)
-
-        # Vẽ text thông tin
-        painter.setPen(QPen(Qt.black))
-        painter.setFont(QFont("Arial", 10, QFont.Bold))
-
-        # Tên game mode
-        painter.drawText(info_x + 10, info_y + 20, "🎯 BẢNG QUAY")
-
-        # Tốc độ quay
-        painter.setFont(QFont("Arial", 9))
-        speed_text = f"Tốc độ: {self.rotation_speed:.1f}°/khung"
-        painter.drawText(info_x + 10, info_y + 40, speed_text)
-
-        # Góc hiện tại
-        angle_text = f"Góc: {int(self._rotation_angle)}°"
-        painter.drawText(info_x + 10, info_y + 55, angle_text)
-
-        painter.restore()
+        # Vẽ thông tin về bảng quay
+        self.dart_painter.draw_rotation_info(
+            painter,
+            self.width(),
+            self.height(),
+            self._rotation_angle,
+            self.rotation_speed,
+        )
 
     def resizeEvent(self, event):
         # Reposition throw icon at bottom center when resized (if not animating)
         super().resizeEvent(event)
         pass
-
-    def apply_physics_to_throw(self, click_x, click_y, throw_power):
-        """Áp dụng physics (độ chính xác) lên vị trí click và trả về final coords"""
-        # Lực ném ảnh hưởng đến độ chính xác
-        max_power = 100.0
-        power_accuracy = min(max(throw_power / max_power, 0.0), 1.0)
-        accuracy_factor = 0.3 + (power_accuracy * 0.7)  # 0.3-1.0
-
-        # 3. Random deviation dựa trên độ chính xác
-        max_deviation = 30 * (1 - accuracy_factor)
-        deviation_x = random.uniform(-max_deviation, max_deviation)
-        deviation_y = random.uniform(-max_deviation, max_deviation)
-
-        # Áp dụng hiệu ứng
-        final_x = click_x + deviation_x
-        final_y = click_y + deviation_y
-
-        return final_x, final_y
-
-    def _simulate_throw_from_center(self, throw_power=100):
-        """Simulate a throw that starts from bottom-center aiming to the board center.
-        After simulation, this stores hit_point and emits throw signals.
-        """
-        # Aim at the center (0,0) in board-local coords
-        click_x, click_y = 0.0, 0.0
-        final_x, final_y = self.apply_physics_to_throw(click_x, click_y, throw_power)
-
-        # Determine score using same logic as mouseReleaseEvent
-        side = min(self.width(), self.height())
-        max_radius = side / 2 - 20
-        distance_from_center = math.sqrt(final_x**2 + final_y**2)
-
-        # 1. Bullseye
-        if distance_from_center < max_radius * 0.08:
-            score = 100
-            # Show score on the dart icon briefly
-            try:
-                self.display_score_on_icon(score)
-            except Exception:
-                pass
-
-            self._store_hit_point(final_x, final_y)
-            self.throw_made_signal.emit(score)
-            self.throw_detail_signal.emit(score, final_x, final_y, self._rotation_angle)
-            return
-
-        # 2. Outside board
-        if distance_from_center > max_radius:
-            score = 0
-            try:
-                self.display_score_on_icon(score)
-            except Exception:
-                pass
-            self._store_hit_point(final_x, final_y)
-            self.throw_made_signal.emit(score)
-            self.throw_detail_signal.emit(score, final_x, final_y, self._rotation_angle)
-            return
-
-        # 3. Segment based on angle (consider rotation)
-        angle_rad = math.atan2(final_y, final_x)
-        angle_deg = math.degrees(angle_rad)
-        adjusted_angle = (angle_deg + self._rotation_angle) % 360
-        if adjusted_angle < 0:
-            adjusted_angle += 360
-
-        score = self._get_segment_score(adjusted_angle)
-
-        # 4. Apply ring multipliers
-        radius_ratio = distance_from_center / max_radius
-        if radius_ratio < 0.3:
-            score = score * 2
-        elif radius_ratio < 0.7:
-            score = score
-        elif radius_ratio < 0.9:
-            score = score * 3
-        else:
-            score = max(score // 2, 1)
-
-        # Store and emit
-        try:
-            self.display_score_on_icon(score)
-        except Exception:
-            pass
-        self._store_hit_point(final_x, final_y)
-        self.throw_made_signal.emit(score)
-        self.throw_detail_signal.emit(score, final_x, final_y, self._rotation_angle)
 
     def mouseMoveEvent(self, event):
         """Track mouse movement để đồng bộ với đối thủ"""
@@ -434,41 +209,38 @@ class DartBoardWidget(QWidget):
         if distance <= max_radius * 1.1:  # Cho phép một chút outside bảng
             self.mouse_move_signal.emit(dx, dy)
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            # Chỉ cần xử lý click - không cần charge power nữa
-            pass
-
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            # Kiểm tra xem có được phép click không
-            if not self.is_enabled:
-                return
-            # Kiểm tra xem có đang trong thời gian delay không
-            if self.throw_delay_active:
-                return
-            # Tính toán vị trí click
-            center = QPointF(self.width() / 2, self.height() / 2)
-            click_pos = QPointF(event.x(), event.y())
-            dx = click_pos.x() - center.x()
-            dy = click_pos.y() - center.y()
+        if event.button() != Qt.LeftButton:
+            return
 
-            # Xác định bán kính tối đa của bảng
-            side = min(self.width(), self.height())
-            max_radius = side / 2 - 20
+        # Kiểm tra xem có được phép click không
+        if not self.is_enabled:
+            return
+        # Kiểm tra xem có đang trong thời gian delay không
+        if self.throw_delay_active:
+            return
+        # Tính toán vị trí click
+        center = QPointF(self.width() / 2, self.height() / 2)
+        click_pos = QPointF(event.x(), event.y())
+        dx = click_pos.x() - center.x()
+        dy = click_pos.y() - center.y()
 
-            # Sử dụng score calculator để tính điểm
-            score, reason = self.score_calculator.calculate_score(
-                dx, dy, self._rotation_angle, max_radius
-            )
+        # Xác định bán kính tối đa của bảng
+        side = min(self.width(), self.height())
+        max_radius = side / 2 - 20
 
-            # Lưu vị trí chấm nếu không phải miss
-            if reason != "miss":
-                self._store_hit_point(dx, dy)
+        # Sử dụng score calculator để tính điểm
+        score, reason = self.score_calculator.calculate_score(
+            dx, dy, self._rotation_angle, max_radius
+        )
 
-            # Emit signals
-            self.throw_made_signal.emit(score)
-            self.throw_detail_signal.emit(score, dx, dy, self._rotation_angle)
+        # Lưu vị trí chấm nếu không phải miss
+        if reason != "miss":
+            self._store_hit_point(dx, dy)
+
+        # Emit signals
+        self.throw_made_signal.emit(score)
+        self.throw_detail_signal.emit(score, dx, dy, self._rotation_angle)
 
     def _store_hit_point(self, dx, dy):
         """
@@ -517,10 +289,6 @@ class DartBoardWidget(QWidget):
             self.cursor_hide_scheduled = False
         self.opponent_cursor = None
         self.update()
-
-    def rotate(self, angle):
-        """Quay bảng ngay lập tức với góc cố định"""
-        self.rotation_angle = (self._rotation_angle + angle) % 360
 
     def spin_wheel(self, min_rotations=3, max_rotations=7):
         """Quay bánh xe với hiệu ứng mượt mà như bánh xe may mắn"""
@@ -601,10 +369,6 @@ class DartBoardWidget(QWidget):
         # Bắt đầu quay
         self.rotation_animation.start()
 
-    def quick_spin(self):
-        """Quay nhanh với 1-2 vòng"""
-        self.spin_wheel(min_rotations=1, max_rotations=2)
-
     def cleanup(self):
         """Dọn dẹp animation và signal khi widget bị hủy"""
         if self.rotation_animation:
@@ -619,19 +383,6 @@ class DartBoardWidget(QWidget):
         if hasattr(self, "cursor_hide_scheduled"):
             self.cursor_hide_scheduled = False
         self.opponent_cursor = None
-
-    def set_rotation_speed(self, speed):
-        """Thiết lập tốc độ quay mới (độ/khung hình)"""
-        self.rotation_speed = max(0.1, min(5.0, speed))  # Giới hạn 0.1-5.0 độ/khung
-
-    def pause_rotation(self):
-        """Tạm dừng quay liên tục"""
-        self.continuous_rotation_timer.stop()
-
-    def resume_rotation(self):
-        """Tiếp tục quay liên tục"""
-        if not self.continuous_rotation_timer.isActive():
-            self.continuous_rotation_timer.start(50)
 
     def closeEvent(self, event):
         """Override closeEvent để dọn dẹp"""
@@ -815,18 +566,18 @@ class DartBoardView(QWidget):
         self.quit_btn = QPushButton("❌ Đầu hàng")
         self.quit_btn.clicked.connect(self.quit_game)
         self.quit_btn.setStyleSheet("""
-      QPushButton {
-        background-color: #f44336;
-        color: white;
-        border: none;
-        padding: 8px;
-        border-radius: 5px;
-        font-weight: bold;
-      }
-      QPushButton:hover {
-        background-color: #d32f2f;
-      }
-    """)
+        QPushButton {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 8px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: #d32f2f;
+        }
+        """)
 
         right_panel_layout.addWidget(self.spin_power_bar)
         right_panel_layout.addWidget(self.spin_btn)
